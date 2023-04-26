@@ -62,36 +62,32 @@ def apply_color(image, ccm):
     return torch.clamp(image, 1e-8, 1.0)
 
 
-class no_conv_dce1(nn.Module):
+class less_conv_dce(nn.Module):
 
     def __init__(self):
-        super(no_conv_dce1, self).__init__()
+        super(less_conv_dce, self).__init__()
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU()
 
         number_f = 32
         self.global_net = Global_pred(in_channels=3, type=type)
-        self.e_conv1 = nn.Conv2d(3, 24, 3, 1, 1, bias=True)
-
-        self.maxpool = nn.MaxPool2d(2, stride=2, return_indices=False, ceil_mode=False)
+        self.e_conv1 = CSDN_Tem(3,number_f)
+        self.e_conv2 = CSDN_Tem(number_f,3)
 
     def forward(self, x):
         color = self.global_net(x)
-        x_r = self.relu(self.e_conv1(x))
+        x1 = self.relu(self.e_conv1(x))
+        x_r = self.relu(self.e_conv2(x1))
         b = x_r.shape[0]
         r_att = torch.stack([apply_color(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
         x_r = x_r + r_att
         x_r = F.tanh(x_r)
-        r1, r2, r3, r4, r5, r6, r7, r8 = torch.split(x_r, 3, dim=1)
 
-        x = x + r1 * (torch.pow(x, 2) - x)
-        x = x + r2 * (torch.pow(x, 2) - x)
-        x = x + r3 * (torch.pow(x, 2) - x)
-        enhance_image_1 = x + r4 * (torch.pow(x, 2) - x)
-        x = enhance_image_1 + r5 * (torch.pow(enhance_image_1, 2) - enhance_image_1)
-        x = x + r6 * (torch.pow(x, 2) - x)
-        x = x + r7 * (torch.pow(x, 2) - x)
-        enhance_image = x + r8 * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
         return enhance_image, x_r
 
 class query_Attention(nn.Module):
