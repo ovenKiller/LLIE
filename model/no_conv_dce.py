@@ -34,6 +34,39 @@ class CSDN_Tem(nn.Module):
         out = self.depth_conv(input)
         out = self.point_conv(out)
         return out
+#Deeper-Smaller-Conv
+class DSConv_Unit(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super(DSConv_Unit, self).__init__()
+        self.deep_conv = nn.Sequential(nn.Conv2d(
+            in_channels=in_ch,
+            out_channels=in_ch,
+            kernel_size=(3,1),
+            stride=1,
+            padding=(1,0),
+            groups=in_ch
+        ),
+        nn.Conv2d(
+            in_channels=in_ch,
+            out_channels=in_ch,
+            kernel_size=(1,3),
+            stride=1,
+            padding=(0,1),
+            groups=in_ch
+        ),
+        nn.Conv2d(
+            in_channels=in_ch,
+            out_channels=out_ch,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            groups=1
+        )
+        )
+    def forward(self, input):
+        out = self.deep_conv(input)
+        return out
+
 
 
 class Mlp(nn.Module):
@@ -73,6 +106,65 @@ class less_conv_dce(nn.Module):
         self.global_net = Global_pred(in_channels=3, type=type)
         self.e_conv1 = CSDN_Tem(3,number_f)
         self.e_conv2 = CSDN_Tem(number_f,3)
+
+    def forward(self, x):
+        color = self.global_net(x)
+        x1 = self.relu(self.e_conv1(x))
+        x_r = self.relu(self.e_conv2(x1))
+        b = x_r.shape[0]
+        r_att = torch.stack([apply_color(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
+        x_r = x_r + r_att
+        x_r = F.tanh(x_r)
+
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
+        return enhance_image, x_r
+
+class query_Attention(nn.Module):
+    def __init__(self, dim, num_heads=2, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
+        super().__init__()
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.q = nn.Parameter(torch.ones((1, 9, dim)), requires_grad=True)
+        self.k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.v = nn.Linear(dim, dim, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        k = self.k(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        v = self.v(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+        q = self.q.expand(B, -1, -1).view(B, -1, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, 9, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+
+
+class less_conv_dce2(nn.Module):
+    def __init__(self):
+        super(less_conv_dce2, self).__init__()
+
+        self.relu = nn.LeakyReLU()
+
+        number_f = 32
+        self.global_net = Global_pred(in_channels=3, type=type)
+        self.e_conv1 = DSConv_Unit(3,number_f)
+        self.e_conv2 = DSConv_Unit(number_f,3)
 
     def forward(self, x):
         color = self.global_net(x)

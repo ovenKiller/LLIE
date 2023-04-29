@@ -2,7 +2,7 @@ import imp
 import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_, DropPath, to_2tuple
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -110,7 +110,6 @@ class dce_isp2(nn.Module):
         x = x + r6 * (torch.pow(x, 2) - x)
         x = x + r7 * (torch.pow(x, 2) - x)
         enhance_image = x + r8 * (torch.pow(x, 2) - x)
-
         return enhance_image, x_r
 
 class query_Attention(nn.Module):

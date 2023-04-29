@@ -6,5 +6,5 @@ def count_flops(model):
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
 
-model = model.dce_isp3()
+model = model.less_conv_dce()
 count_flops(model)

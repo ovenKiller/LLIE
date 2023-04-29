@@ -175,9 +175,6 @@ class conv_embedding(nn.Module):
             nn.Conv2d(in_channels, out_channels // 2, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),
             nn.BatchNorm2d(out_channels // 2),
             nn.GELU(),
-            # nn.Conv2d(out_channels // 2, out_channels // 2, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            # nn.BatchNorm2d(out_channels // 2),
-            # nn.GELU(),
             nn.Conv2d(out_channels // 2, out_channels, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),
             nn.BatchNorm2d(out_channels),
         )
@@ -224,9 +221,3 @@ class Global_pred(nn.Module):
         #print(self.gamma_base, self.gamma_linear(gamma))
         color = self.color_linear(x).squeeze(-1).view(-1, 3, 3) + self.color_base
         return color
-
-model = dce_isp_param()
-a = torch.zeros(8,3,256,256)
-c,d = model(a)
-print(c.shape)
-print(d.shape)

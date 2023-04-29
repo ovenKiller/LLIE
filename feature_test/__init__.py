@@ -1,2 +1,2 @@
 from.count_flops import count_flops
-from .speed_test import speed_test
+from .speed_test import gpu_speed_test,cpu_speed_test
