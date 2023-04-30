@@ -1,27 +1,27 @@
-import imp
-import torch
-import torch.nn as nn
 from timm.models.layers import trunc_normal_, DropPath, to_2tuple
-
+import time
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-# 假设输入是W*H*in_ch,输出是W*H*out_ch
-# FLOPs = W*H*in_c*(9+out_ch)
-# 假如使用纯卷积，则 FLOPs = W*H*in_c*9*out_ch
-class CSDN_Tem(nn.Module):
-    def __init__(self, in_ch, out_ch):
-        super(CSDN_Tem, self).__init__()
-        self.depth_conv = nn.Conv2d(
+class DSConv_Unit(nn.Module):
+    def __init__(self, in_ch, out_ch,stride=1):
+        super(DSConv_Unit, self).__init__()
+        self.deep_conv = nn.Sequential(nn.Conv2d(
             in_channels=in_ch,
             out_channels=in_ch,
-            kernel_size=3,
-            stride=1,
-            padding=1,
+            kernel_size=(3,1),
+            stride=(stride,1),
+            padding=(1,0),
             groups=in_ch
-        )
-        self.point_conv = nn.Conv2d(
+        ),
+        nn.Conv2d(
+            in_channels=in_ch,
+            out_channels=in_ch,
+            kernel_size=(1,3),
+            stride=(1,stride),
+            padding=(0,1),
+            groups=in_ch
+        ),
+        nn.Conv2d(
             in_channels=in_ch,
             out_channels=out_ch,
             kernel_size=1,
@@ -29,98 +29,17 @@ class CSDN_Tem(nn.Module):
             padding=0,
             groups=1
         )
-
+        )
     def forward(self, input):
-        out = self.depth_conv(input)
-        out = self.point_conv(out)
+        out = self.deep_conv(input)
         return out
-
-
-class Mlp(nn.Module):
-    # taken from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
-        super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop(x)
-        x = self.fc2(x)
-        x = self.drop(x)
-        return x
-def apply_color(image, ccm):
-    shape = image.shape
-    image = image.view(-1, 3)
-    image = torch.tensordot(image, ccm, dims=[[-1], [-1]])
-    image = image.view(shape)
-    return torch.clamp(image, 1e-8, 1.0)
-
-
-class dce_isp_param(nn.Module):
-
-    def __init__(self):
-        super(dce_isp_param, self).__init__()
-
-        self.relu = nn.ReLU(inplace=True)
-
-        number_f = 32
-        self.global_net = Global_pred(in_channels=3, type=type)
-        self.e_conv1 = nn.Conv2d(3, number_f, 3, 1, 1, bias=True)
-        self.e_conv2 = CSDN_Tem(number_f, number_f)
-        self.e_conv3 = CSDN_Tem(number_f, number_f)
-        self.e_conv4 = CSDN_Tem(number_f, number_f)
-        self.e_conv5 = CSDN_Tem(number_f * 2, number_f)
-        self.e_conv6 = CSDN_Tem(number_f * 2, number_f)
-        self.e_conv7 = nn.Conv2d(number_f * 2, 24, 3, 1, 1, bias=True)
-
-        self.maxpool = nn.MaxPool2d(2, stride=2, return_indices=False, ceil_mode=False)
-        self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
-
-    def forward(self, x):
-        color = self.global_net(x)
-        x1 = self.relu(self.e_conv1(x))
-        # p1 = self.maxpool(x1)
-        x2 = self.relu(self.e_conv2(x1))
-        # p2 = self.maxpool(x2)
-        x3 = self.relu(self.e_conv3(x2))
-        # p3 = self.maxpool(x3)
-        x4 = self.relu(self.e_conv4(x3))
-
-        x5 = self.relu(self.e_conv5(torch.cat([x3, x4], 1)))
-        # x5 = self.upsample(x5)
-        x6 = self.relu(self.e_conv6(torch.cat([x2, x5], 1)))
-        x_r = self.e_conv7(torch.cat([x1, x6],1))
-        b = x_r.shape[0]
-        r_att = torch.stack([apply_color(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
-        x_r = x_r + r_att
-        x_r = F.tanh(x_r)
-        r1, r2, r3, r4, r5, r6, r7, r8 = torch.split(x_r, 3, dim=1)
-
-        x = x + r1 * (torch.pow(x, 2) - x)
-        x = x + r2 * (torch.pow(x, 2) - x)
-        x = x + r3 * (torch.pow(x, 2) - x)
-        enhance_image_1 = x + r4 * (torch.pow(x, 2) - x)
-        x = enhance_image_1 + r5 * (torch.pow(enhance_image_1, 2) - enhance_image_1)
-        x = x + r6 * (torch.pow(x, 2) - x)
-        x = x + r7 * (torch.pow(x, 2) - x)
-        enhance_image = x + r8 * (torch.pow(x, 2) - x)
-
-        return enhance_image, x_r
 
 class query_Attention(nn.Module):
     def __init__(self, dim, num_heads=2, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
-
         self.q = nn.Parameter(torch.ones((1, 9, dim)), requires_grad=True)
         self.k = nn.Linear(dim, dim, bias=qkv_bias)
         self.v = nn.Linear(dim, dim, bias=qkv_bias)
@@ -144,6 +63,12 @@ class query_Attention(nn.Module):
         return x
 
 
+def ccm(image, ccm):
+    shape = image.shape
+    image = image.view(-1, 3)
+    image = torch.tensordot(image, ccm, dims=[[-1], [-1]])
+    image = image.view(shape)
+    return torch.clamp(image, 1e-8, 1.0)
 class query_SABlock(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
@@ -168,22 +93,24 @@ class query_SABlock(nn.Module):
         return x
 
 
-class conv_embedding(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(conv_embedding, self).__init__()
-        self.proj = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels // 2, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),
-            nn.BatchNorm2d(out_channels // 2),
-            nn.GELU(),
-            nn.Conv2d(out_channels // 2, out_channels, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),
-            nn.BatchNorm2d(out_channels),
-        )
+class Mlp(nn.Module):
+    # taken from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
 
     def forward(self, x):
-        x = self.proj(x)
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
         return x
-
-
 class Global_pred(nn.Module):
     def __init__(self, in_channels=3, out_channels=64, num_heads=4, type='exp'):
         super(Global_pred, self).__init__()
@@ -193,7 +120,17 @@ class Global_pred(nn.Module):
         #     self.gamma_base = nn.Parameter(torch.ones((1)), requires_grad=True)
         self.color_base = nn.Parameter(torch.eye((3)), requires_grad=True)  # basic color matrix
         # main blocks
-        self.conv_large = conv_embedding(in_channels, out_channels)
+        self.proj = nn.Sequential(
+            DSConv_Unit(in_channels,out_channels//2,stride=2),
+            # nn.Conv2d(in_channels, out_channels // 2, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)),
+            nn.BatchNorm2d(out_channels // 2),
+            nn.GELU(),
+            # nn.Conv2d(out_channels // 2, out_channels // 2, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            # nn.BatchNorm2d(out_channels // 2),
+            # nn.GELU(),
+            DSConv_Unit(out_channels//2 , out_channels, stride=2),
+            nn.BatchNorm2d(out_channels),
+        )
         self.generator = query_SABlock(dim=out_channels, num_heads=num_heads)
         # self.gamma_linear = nn.Linear(out_channels, 1)
         self.color_linear = nn.Linear(out_channels, 1)
@@ -216,10 +153,41 @@ class Global_pred(nn.Module):
 
     def forward(self, x):
         #print(self.gamma_base)
-        x = self.conv_large(x)
+        x = self.proj(x)
         x = self.generator(x)
         #print(self.gamma_base, self.gamma_linear(gamma))
         color = self.color_linear(x).squeeze(-1).view(-1, 3, 3) + self.color_base
         return color
 
+class DSdce(nn.Module):
+    def __init__(self):
+        super(DSdce, self).__init__()
 
+        self.relu = nn.LeakyReLU()
+
+        number_f = 32
+        self.global_net = Global_pred(in_channels=3, type=type)
+        self.e_conv1 = DSConv_Unit(3,number_f)
+        self.e_conv2 = DSConv_Unit(number_f,3)
+
+    def forward(self, x):
+        color = self.global_net(x)
+        x1 = self.relu(self.e_conv1(x))
+        x_r = self.relu(self.e_conv2(x1))
+        b = x_r.shape[0]
+        r_att = torch.stack([ccm(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
+        x_r = x_r + r_att
+        x_r = torch.tanh(x_r)
+
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
+        return enhance_image, x_r
+
+# input = torch.zeros(8,3,256,256)
+# c1 = nn.Conv2d(3,32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+# c2 = DSConv_Unit(3,32,2)
+# print(c1(input).shape)
+# print(c2(input).shape)
