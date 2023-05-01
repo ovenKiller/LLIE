@@ -14,7 +14,7 @@ random.seed(1143)
 
 def populate_list(images_path):
 
-	image_list = glob.glob(images_path +"/**/"+"*.jpg",recursive=True)
+	image_list = glob.glob(images_path +"/**/"+"*.jpg",recursive=True)+glob.glob(images_path +"/**/"+"*.png",recursive=True)
 
 	random.shuffle(image_list)
 
