@@ -186,6 +186,34 @@ class DSdce(nn.Module):
         enhance_image = x + x_r * (torch.pow(x, 2) - x)
         return enhance_image, x_r
 
+
+class DSdce2(nn.Module):
+    def __init__(self):
+        super(DSdce2, self).__init__()
+
+        self.relu = nn.LeakyReLU()
+
+        number_f = 32
+        self.global_net = Global_pred(in_channels=3, type=type)
+        self.e_conv1 = DSConv_Unit(3,number_f)
+        self.e_conv2 = DSConv_Unit(number_f,3)
+
+    def forward(self, x):
+        color = self.global_net(x)
+        x1 = self.relu(self.e_conv1(x))
+        A = self.relu(self.e_conv2(x1))
+        b = A.shape[0]
+        r_att = torch.stack([ccm(A[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
+        A = A + r_att
+        A = torch.sigmoid(A)
+
+        x = x * (1 + A*(x - 1))
+        x = x * (1 + A*(x - 1))
+        x = x * (1 + A*(x - 1))
+        x = x * (1 + A*(x - 1))
+        enhance_image = x * (1 + A*(x - 1))
+        return enhance_image, A
+
 # input = torch.zeros(8,3,256,256)
 # c1 = nn.Conv2d(3,32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
 # c2 = DSConv_Unit(3,32,2)
