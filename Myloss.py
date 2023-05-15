@@ -83,7 +83,7 @@ class L_exp(nn.Module):
         x = torch.mean(x,1,keepdim=True)
         mean = self.pool(x)
 
-        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val] ),2))
+        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val]),2,device=x.device))
         return d
         
 class L_TV(nn.Module):
