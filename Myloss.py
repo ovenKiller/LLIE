@@ -83,9 +83,10 @@ class L_exp(nn.Module):
         x = torch.mean(x,1,keepdim=True)
         mean = self.pool(x)
 
-        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val],device=x.device),2))
+        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val]).to(x.device),2))
         return d
-        
+
+
 class L_TV(nn.Module):
     def __init__(self,TVLoss_weight=1):
         super(L_TV,self).__init__()
