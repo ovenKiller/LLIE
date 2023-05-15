@@ -28,7 +28,7 @@ class L_ccm(nn.Module):
     def __init__(self):
         super(L_ccm, self).__init__()
     def forward(self,x):
-        std = torch.eye(3)
+        std = torch.eye(3).to(x.device)
         t = torch.pow((x-std).mean(),2)
         return t
 class L_spa(nn.Module):
@@ -51,12 +51,7 @@ class L_spa(nn.Module):
         enhance_mean = torch.mean(enhance,1,keepdim=True)
 
         org_pool =  self.pool(org_mean)			
-        enhance_pool = self.pool(enhance_mean)	
-
-        weight_diff =torch.max(torch.FloatTensor([1]) + 10000*torch.min(org_pool - torch.FloatTensor([0.3]),torch.FloatTensor([0])),torch.FloatTensor([0.5]))
-        E_1 = torch.mul(torch.sign(enhance_pool - torch.FloatTensor([0.5])) ,enhance_pool-org_pool)
-
-
+        enhance_pool = self.pool(enhance_mean)
         D_org_letf = F.conv2d(org_pool , self.weight_left, padding=1)
         D_org_right = F.conv2d(org_pool , self.weight_right, padding=1)
         D_org_up = F.conv2d(org_pool , self.weight_up, padding=1)
@@ -105,57 +100,8 @@ class L_TV(nn.Module):
         h_tv = torch.pow((x[:,:,1:,:]-x[:,:,:h_x-1,:]),2).sum()
         w_tv = torch.pow((x[:,:,:,1:]-x[:,:,:,:w_x-1]),2).sum()
         return self.TVLoss_weight*2*(h_tv/count_h+w_tv/count_w)/batch_size
-class Sa_Loss(nn.Module):
-    def __init__(self):
-        super(Sa_Loss, self).__init__()
-        # print(1)
-    def forward(self, x ):
-        # self.grad = np.ones(x.shape,dtype=np.float32)
-        b,c,h,w = x.shape
-        # x_de = x.cpu().detach().numpy()
-        r,g,b = torch.split(x , 1, dim=1)
-        mean_rgb = torch.mean(x,[2,3],keepdim=True)
-        mr,mg, mb = torch.split(mean_rgb, 1, dim=1)
-        Dr = r-mr
-        Dg = g-mg
-        Db = b-mb
-        k =torch.pow( torch.pow(Dr,2) + torch.pow(Db,2) + torch.pow(Dg,2),0.5)
-        # print(k)
-        
 
-        k = torch.mean(k)
-        return k
 
-class perception_loss(nn.Module):
-    def __init__(self):
-        super(perception_loss, self).__init__()
-        features = vgg16(pretrained=True).features
-        self.to_relu_1_2 = nn.Sequential() 
-        self.to_relu_2_2 = nn.Sequential() 
-        self.to_relu_3_3 = nn.Sequential()
-        self.to_relu_4_3 = nn.Sequential()
-
-        for x in range(4):
-            self.to_relu_1_2.add_module(str(x), features[x])
-        for x in range(4, 9):
-            self.to_relu_2_2.add_module(str(x), features[x])
-        for x in range(9, 16):
-            self.to_relu_3_3.add_module(str(x), features[x])
-        for x in range(16, 23):
-            self.to_relu_4_3.add_module(str(x), features[x])
-        
-        # don't need the gradients, just want the features
-        for param in self.parameters():
-            param.requires_grad = False
-
-    def forward(self, x):
-        h = self.to_relu_1_2(x)
-        h_relu_1_2 = h
-        h = self.to_relu_2_2(h)
-        h_relu_2_2 = h
-        h = self.to_relu_3_3(h)
-        h_relu_3_3 = h
-        h = self.to_relu_4_3(h)
-        h_relu_4_3 = h
-        # out = (h_relu_1_2, h_relu_2_2, h_relu_3_3, h_relu_4_3)
-        return h_relu_4_3
+# a = torch.randn(8,3,3)
+# loss = L_ccm()
+# print(loss(a))
