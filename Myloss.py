@@ -22,19 +22,23 @@ class L_color(nn.Module):
         Dgb = torch.pow(mb-mg,2)
         k = torch.pow(torch.pow(Drg,2) + torch.pow(Drb,2) + torch.pow(Dgb,2),0.5)
 
-
         return k
 
-			
+class L_ccm(nn.Module):
+    def __init__(self):
+        super(L_ccm, self).__init__()
+    def forward(self,x):
+        std = torch.eye(3)
+        t = torch.pow((x-std).mean(),2)
+        return t
 class L_spa(nn.Module):
-
     def __init__(self):
         super(L_spa, self).__init__()
         # print(1)kernel = torch.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
-        kernel_left = torch.FloatTensor( [[0,0,0],[-1,1,0],[0,0,0]]).cuda().unsqueeze(0).unsqueeze(0)
-        kernel_right = torch.FloatTensor( [[0,0,0],[0,1,-1],[0,0,0]]).cuda().unsqueeze(0).unsqueeze(0)
-        kernel_up = torch.FloatTensor( [[0,-1,0],[0,1, 0 ],[0,0,0]]).cuda().unsqueeze(0).unsqueeze(0)
-        kernel_down = torch.FloatTensor( [[0,0,0],[0,1, 0],[0,-1,0]]).cuda().unsqueeze(0).unsqueeze(0)
+        kernel_left = torch.FloatTensor( [[0,0,0],[-1,1,0],[0,0,0]]).unsqueeze(0).unsqueeze(0)
+        kernel_right = torch.FloatTensor( [[0,0,0],[0,1,-1],[0,0,0]]).unsqueeze(0).unsqueeze(0)
+        kernel_up = torch.FloatTensor( [[0,-1,0],[0,1, 0 ],[0,0,0]]).unsqueeze(0).unsqueeze(0)
+        kernel_down = torch.FloatTensor( [[0,0,0],[0,1, 0],[0,-1,0]]).unsqueeze(0).unsqueeze(0)
         self.weight_left = nn.Parameter(data=kernel_left, requires_grad=False)
         self.weight_right = nn.Parameter(data=kernel_right, requires_grad=False)
         self.weight_up = nn.Parameter(data=kernel_up, requires_grad=False)
@@ -49,8 +53,8 @@ class L_spa(nn.Module):
         org_pool =  self.pool(org_mean)			
         enhance_pool = self.pool(enhance_mean)	
 
-        weight_diff =torch.max(torch.FloatTensor([1]).cuda() + 10000*torch.min(org_pool - torch.FloatTensor([0.3]).cuda(),torch.FloatTensor([0]).cuda()),torch.FloatTensor([0.5]).cuda())
-        E_1 = torch.mul(torch.sign(enhance_pool - torch.FloatTensor([0.5]).cuda()) ,enhance_pool-org_pool)
+        weight_diff =torch.max(torch.FloatTensor([1]) + 10000*torch.min(org_pool - torch.FloatTensor([0.3]),torch.FloatTensor([0])),torch.FloatTensor([0.5]))
+        E_1 = torch.mul(torch.sign(enhance_pool - torch.FloatTensor([0.5])) ,enhance_pool-org_pool)
 
 
         D_org_letf = F.conv2d(org_pool , self.weight_left, padding=1)
@@ -84,7 +88,7 @@ class L_exp(nn.Module):
         x = torch.mean(x,1,keepdim=True)
         mean = self.pool(x)
 
-        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val] ).cuda(),2))
+        d = torch.mean(torch.pow(mean- torch.FloatTensor([self.mean_val] ),2))
         return d
         
 class L_TV(nn.Module):
