@@ -175,18 +175,18 @@ class FCE(nn.Module):
     def forward(self, x):
         color = self.global_net(x)
         x1 = self.relu(self.e_conv1(x))
-        A = self.relu(self.e_conv2(x1))
-        b = A.shape[0]
-        r_att = torch.stack([ccm(A[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
-        A = A + r_att
-        A = torch.sigmoid(A)
+        x_r = self.relu(self.e_conv2(x1))
+        b = x_r.shape[0]
+        r_att = torch.stack([ccm(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
+        x_r = x_r + r_att
+        x_r = torch.tanh(x_r)
 
-        x = x * (1 + A*(x - 1))
-        x = x * (1 + A*(x - 1))
-        x = x * (1 + A*(x - 1))
-        x = x * (1 + A*(x - 1))
-        enhance_image = x * (1 + A*(x - 1))
-        return enhance_image, A, color
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
+        return enhance_image, x_r
 
 
 # a = torch.randn(8,3,256,256)
