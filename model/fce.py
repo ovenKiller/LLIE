@@ -189,9 +189,59 @@ class FCE(nn.Module):
         return enhance_image, x_r
 
 
+class FCE2(nn.Module):
+    def __init__(self):
+        super(FCE2, self).__init__()
+
+        self.relu = nn.LeakyReLU()
+
+        number_f = 32
+        self.global_net = Global_pred(in_channels=3, type=type)
+        self.e_conv1 = nn.Conv2d(3,number_f,3,1,1)
+        self.e_conv2 = nn.Conv2d(number_f,3,3,1,1)
+
+    def forward(self, x):
+        color = self.global_net(x)
+        x1 = self.relu(self.e_conv1(x))
+        x_r = self.relu(self.e_conv2(x1))
+        b = x_r.shape[0]
+        r_att = torch.stack([ccm(x_r[i, :, :, :], color[i, :, :]) for i in range(b)], dim=0)
+        x_r = x_r + r_att
+        x_r = torch.tanh(x_r)
+
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
+        return enhance_image, x_r
+
+
+class FCE3(nn.Module):
+    def __init__(self):
+        super(FCE3, self).__init__()
+
+        self.relu = nn.LeakyReLU()
+
+        number_f = 32
+        self.e_conv1 = DSConv_Unit(3,number_f)
+        self.e_conv2 = DSConv_Unit(number_f,3)
+
+    def forward(self, x):
+        x1 = self.relu(self.e_conv1(x))
+        x_r = self.relu(self.e_conv2(x1))
+        x_r = torch.tanh(x_r)
+
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        x = x + x_r * (torch.pow(x, 2) - x)
+        enhance_image = x + x_r * (torch.pow(x, 2) - x)
+        return enhance_image, x_r
+
+
 # a = torch.randn(8,3,256,256)
-# model = FCE()
+# model = FCE3()
 # rev = model(a)
 # print(rev[0].shape)
 # print(rev[1].shape)
-# print(rev[2].shape)
